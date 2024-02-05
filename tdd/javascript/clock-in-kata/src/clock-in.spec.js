@@ -8,7 +8,7 @@ function sendClockIn(gpsCoordinates) {
     const clockInDateTime = Date.now().toString();
     fetch(clockInEndpoint, {
       method: 'POST',
-      body: JSON.stringify({ clockInDateTime: clockInDateTime, gpsCoordinates: gpsCoordinates }),
+      body: getBody(clockInDateTime, gpsCoordinates),
       headers: {
         'Content-Type': 'application/json'
       }
@@ -20,6 +20,10 @@ function sendClockIn(gpsCoordinates) {
         reject('Failed to clock in');
       });
   });
+}
+
+function getBody(clockInDateTime, gpsCoordinates) {
+  return JSON.stringify({ clockInDateTime: clockInDateTime, gpsCoordinates: gpsCoordinates });
 }
 
 function getGpsCoordinates() {
