@@ -1,11 +1,18 @@
 const assert = require('assert');
-const fetchMock = require("fetch-mock");
+const fetchMock = require('fetch-mock');
+const sinon = require('sinon');
 const clockInEndpoint = 'https://code-dojo/v1/clock-ins'
 const gpsEndpoint = 'https://code-dojo/v1/gps'
 
-function sendClockIn(gpsCoordinates) {
+function sendClockIn(gpsCoordinates, gpsRequired = false) {
   return new Promise((resolve, reject) => {
+    if (gpsRequired && !gpsCoordinates) {
+      console.warn('GPS is not available, unable to clock in')
+      reject('GPS is not available');
+    }
+
     const clockInDateTime = Date.now().toString();
+
     fetch(clockInEndpoint, {
       method: 'POST',
       body: getBody(clockInDateTime, gpsCoordinates),
@@ -46,6 +53,10 @@ function getGpsCoordinates() {
 describe('time tracking', () => {
   beforeEach(() => {
     fetchMock.restore();
+  });
+
+  afterEach(() => {
+    sinon.restore();
   });
 
   context('only time is tracked', () => {
@@ -175,22 +186,80 @@ describe('time tracking', () => {
     });
   });
 
-  // context('GPS is required', () => {
-  //   it('sends clock-in when GPS is available', () =>
-  //     sendClockIn(gpsIsAvailable)
-  //   );
-  //
-  //   it('sends clock-in with coordinates when GPS is available', (done) => {
-  //   });
-  //
-  //   it('does NOT send clock-in when no GPS is available', (done) => {
-  //     sendClockIn(gpsIsNotAvailable)
-  //       .then(() => assert(false, 'Promise should have been rejected'))
-  //       .catch(done);
-  //   });
-  //
-  //   it('warns the user when no GPS is available', () => {
-  //
-  //   });
-  // });
+   context('GPS is required', () => {
+     it('sends clock in when GPS is available', (done) => {
+       fetchMock.get(gpsEndpoint, {
+         headers: { 'content-type': 'application/json' }
+       });
+
+       fetchMock.postOnce(clockInEndpoint, {
+         body: { 'status': 'Success!' },
+         headers: { 'content-type': 'application/json' }
+       });
+
+       getGpsCoordinates()
+         .then(gpsCoordinates => {
+           sendClockIn(gpsCoordinates)
+             .then(result => {
+               assert.strictEqual(result, 'Clocked in');
+               done();
+             }).catch(error => {
+              assert.strictEqual(error, undefined);
+             });
+         }).catch(error => {
+            assert.strictEqual(error, undefined);
+         });
+     });
+
+     it('does NOT send clock-in when no GPS is available', (done) => {
+       fetchMock.get(gpsEndpoint, () => {
+         throw new Error();
+       });
+
+       fetchMock.postOnce(clockInEndpoint, {
+         body: { 'status': 'Success!' },
+         headers: { 'content-type': 'application/json' }
+       });
+
+       getGpsCoordinates()
+         .then(gpsCoordinates => {
+           assert.strictEqual(gpsCoordinates, undefined);
+         }).catch(error => {
+           sendClockIn(null, true)
+             .then(result => {
+               assert.strictEqual(result, undefined);
+             }).catch(error => {
+               assert.strictEqual(error, 'GPS is not available');
+               done();
+             });
+         });
+     });
+
+     it('warns the user when no GPS is available', (done) => {
+       const consoleStub = sinon.stub(console, 'warn');
+
+       fetchMock.get(gpsEndpoint, () => {
+         throw new Error();
+       });
+
+       fetchMock.postOnce(clockInEndpoint, {
+         body: { 'status': 'Success!' },
+         headers: { 'content-type': 'application/json' }
+       });
+
+       getGpsCoordinates()
+         .then(gpsCoordinates => {
+           assert.strictEqual(gpsCoordinates, undefined);
+         }).catch(error => {
+           sendClockIn(null, true)
+             .then(result => {
+               assert.strictEqual(result, undefined);
+             }).catch(error => {
+               sinon.assert.calledOnce(consoleStub);
+               sinon.assert.calledWith(consoleStub, 'GPS is not available, unable to clock in');
+               done();
+            });
+         });
+     });
+   });
 });
